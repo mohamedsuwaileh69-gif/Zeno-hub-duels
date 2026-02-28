@@ -1,0 +1,198 @@
+-- [[ ZENO DUELS - ULTIMATE FIXED + ESP ]]
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local char, hrp, hum
+
+-- Character Refresh Logic
+local function syncChar()
+    char = player.Character or player.CharacterAdded:Wait()
+    hrp = char:WaitForChild("HumanoidRootPart", 5)
+    hum = char:WaitForChild("Humanoid", 5)
+end
+syncChar()
+
+local Config = {
+    Speed = false, SpeedVal = 27,
+    Grab = false,
+    InfJump = false,
+    Protect = false,
+    Spin = false, SpinVal = 50,
+    ESP = false -- New Toggle
+}
+
+-- [[ ESP SYSTEM ]]
+local function createESP(targetPlayer)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ZenoESP"
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(4, 0, 5, 0)
+    billboard.Adornee = nil -- Will set in loop
+    
+    local frame = Instance.new("Frame", billboard)
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(255, 0, 0)
+    stroke.Thickness = 1.5
+    
+    local nameLabel = Instance.new("TextLabel", billboard)
+    nameLabel.Size = UDim2.new(1, 0, 0, 20)
+    nameLabel.Position = UDim2.new(0, 0, 0, -25)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = Color3.new(1, 1, 1)
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 12
+    nameLabel.TextStrokeTransparency = 0
+    
+    return billboard, nameLabel
+end
+
+local espObjects = {}
+
+local function updateESP()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local tChar = p.Character
+            local tRoot = tChar.HumanoidRootPart
+            local tHum = tChar:FindFirstChild("Humanoid")
+            
+            if not espObjects[p] then
+                local b, n = createESP(p)
+                espObjects[p] = {Gui = b, Label = n}
+            end
+            
+            local data = espObjects[p]
+            data.Gui.Parent = (Config.ESP and tRoot) and player.PlayerGui or nil
+            data.Gui.Adornee = tRoot
+            if tHum then
+                data.Label.Text = string.format("%s\n[HP: %d]", p.DisplayName, math.floor(tHum.Health))
+            end
+        elseif espObjects[p] then
+            espObjects[p].Gui.Parent = nil
+        end
+    end
+end
+
+-- [[ ABILITY CORE ]]
+RunService.Heartbeat:Connect(function()
+    if not hrp or not hum or hum.Health <= 0 then return end
+    updateESP()
+    
+    if Config.Speed and hum.MoveDirection.Magnitude > 0 then
+        local vel = hum.MoveDirection * Config.SpeedVal
+        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, hrp.AssemblyLinearVelocity.Y, vel.Z)
+    end
+    
+    if Config.Spin then
+        hrp.RotVelocity = Vector3.new(0, Config.SpinVal, 0)
+    end
+    
+    if Config.Protect then
+        local target = nil
+        local dist = 100
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local d = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                if d < dist then
+                    dist = d
+                    target = p.Character.HumanoidRootPart
+                end
+            end
+        end
+        if target then
+            hrp.CFrame = target.CFrame * CFrame.new(0, 0, 3.5)
+            local tool = char:FindFirstChildWhichIsA("Tool")
+            if tool then tool:Activate() end
+        end
+    end
+end)
+
+-- Infinite Jump
+UIS.JumpRequest:Connect(function()
+    if Config.InfJump and hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+end)
+
+-- Auto Grab
+task.spawn(function()
+    while task.wait(0.2) do
+        if Config.Grab and hrp then
+            local plots = Workspace:FindFirstChild("Plots")
+            if plots then
+                for _, p in pairs(plots:GetDescendants()) do
+                    if p:IsA("ProximityPrompt") and p.Enabled then
+                        local pPart = p.Parent:IsA("BasePart") and p.Parent
+                        if pPart and (hrp.Position - pPart.Position).Magnitude <= p.MaxActivationDistance then
+                            fireproximityprompt(p)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- [[ MODERN DRAGGABLE GUI ]]
+local sg = Instance.new("ScreenGui", player.PlayerGui)
+sg.Name = "ZenoHub"
+
+local main = Instance.new("Frame", sg)
+main.Size = UDim2.fromOffset(220, 320) -- Slightly taller for ESP button
+main.Position = UDim2.fromOffset(100, 100)
+main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+main.BorderSizePixel = 0
+Instance.new("UICorner", main)
+
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.new(1, 0, 0, 35)
+title.Text = "ZENO DUELS HUB"
+title.TextColor3 = Color3.new(1, 0, 0)
+title.Font = Enum.Font.GothamBold
+title.BackgroundTransparency = 1
+
+local list = Instance.new("UIListLayout", main)
+list.Padding = UDim.new(0, 5)
+list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local function createToggle(name, callback)
+    local btn = Instance.new("TextButton", main)
+    btn.Size = UDim2.new(0.9, 0, 0, 35)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    btn.Text = name
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Gotham
+    Instance.new("UICorner", btn)
+    
+    btn.MouseButton1Click:Connect(function()
+        local newState = callback()
+        btn.BackgroundColor3 = newState and Color3.fromRGB(150, 0, 0) or Color3.fromRGB(45, 45, 45)
+    end)
+end
+
+createToggle("Visual ESP", function() Config.ESP = not Config.ESP return Config.ESP end)
+createToggle("Speed Boost", function() Config.Speed = not Config.Speed return Config.Speed end)
+createToggle("Auto Steal", function() Config.Grab = not Config.Grab return Config.Grab end)
+createToggle("Protect Mode", function() Config.Protect = not Config.Protect return Config.Protect end)
+createToggle("Infinite Jump", function() Config.InfJump = not Config.InfJump return Config.InfJump end)
+createToggle("Spin Bot", function() Config.Spin = not Config.Spin return Config.Spin end)
+
+-- Dragging logic
+local dragStart, startPos, dragging
+main.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = i.Position; startPos = main.Position
+    end
+end)
+UIS.InputChanged:Connect(function(i)
+    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local delta = i.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+
+player.CharacterAdded:Connect(syncChar)
+print("Zeno Hub + ESP Loaded.")
